@@ -1,0 +1,182 @@
+<script>
+  var LSactivitiesListKEY = "activitiesList";
+
+  // Append passed object to localStorage activitiesList and save again.
+  function appendToLS(activityObj) {
+    if (activityObj == null) {
+      return false;
+    }
+    if (localStorage.getItem(LSactivitiesListKEY) == null) {
+      localStorage.setItem(LSactivitiesListKEY, "[]");
+    }
+    let currentList = JSON.parse(localStorage.getItem(LSactivitiesListKEY));
+    currentList.push(activityObj);
+    localStorage.setItem(LSactivitiesListKEY, JSON.stringify(currentList));
+  }
+
+  function popFromLS(id) {
+    if (localStorage.getItem(LSactivitiesListKEY) == null) {
+      return;
+    }
+    let currentList = JSON.parse(localStorage.getItem(LSactivitiesListKEY));
+    currentList.splice(currentList.findIndex(a => a.id == id), 1);
+    localStorage.setItem(LSactivitiesListKEY, JSON.stringify(currentList));
+  }
+
+  function removeActivityFromHTMLResult(id) {
+    let activitiesListDiv = document.querySelector("ul#activities-list");
+    activitiesListDiv.removeChild(activitiesListDiv.querySelector(`li#activity-${id.trim()}`))
+  }
+
+  function deleteActivity(id) {
+    popFromLS(id);
+    removeActivityFromHTMLResult(id);
+  }
+
+  function isValidHttpUrl(string) {
+    let url;
+    try {
+      url = new URL(string.trim());
+    } catch (_) {
+      return false;
+    }
+
+    return url.protocol === "http:" || url.protocol === "https:";
+  }
+
+
+  // Create HTML div with grade results.
+  function appendActivityToResultHTML(gradeObj) {
+    let { id, title, feedback, url, courseId } = gradeObj;
+
+    let newLi = document.createElement("li");
+    newLi.setAttribute("id",`activity-${id.trim()}`);
+
+    let deleteIcon = document.createElement("img");
+    deleteIcon.src= "/theme/image.php/clean/core/1624895146/t/delete";
+    let removeBtn = document.createElement("BUTTON");
+    removeBtn.appendChild(deleteIcon);
+    removeBtn.onclick = () => deleteActivity(id);
+
+    let idSpan = document.createElement("span");
+    let activityLink = document.createElement("a");
+    activityLink.href= url;
+    activityLink.innerHTML = `[${courseId}] `;
+    idSpan.appendChild(activityLink);
+
+    let titleSpan = document.createElement("span");
+    if (title.length >= 21) {
+      titleSpan.innerHTML = `${title.substr(0,20)}... `;
+      titleSpan.title = title;
+    } else {
+      titleSpan.innerHTML = `${title} `;
+    }
+
+    let feedbackSpan = document.createElement("span");
+    feedbackSpan.innerHTML = `${feedback ? feedback : "Not Graded"}`;
+    feedbackSpan.setAttribute("class", feedback ? "level3 category" : "level2 category");
+
+    newLi.appendChild(idSpan);
+    newLi.appendChild(titleSpan);
+    newLi.appendChild(feedbackSpan);
+    newLi.appendChild(removeBtn);
+
+    let activitiesListDiv = document.querySelector("ul#activities-list");
+    activitiesListDiv.appendChild(newLi);
+  }
+
+  // Fetch url, parse response HTMLDocument and return activity object.
+  async function fetchGradeURL(url) {
+    let resultObject = null;
+    resultObject = await fetch(url).then((response) => {
+      return response.text();
+    })
+      .then(async (html) => {
+        let parser = new DOMParser();
+        let parsedPage = await parser.parseFromString(html, 'text/html');
+        return getGrade(parsedPage);
+      })
+      .catch(((error) => {
+        console.log(error)
+      }));
+    return resultObject;
+  }
+
+  // Get HTMLDocument and return activity data wrapped in an object
+  function getGrade(doc) {
+    let breadcrumbList = doc.querySelectorAll("ul.breadcrumb li span a");
+    let currentURL = breadcrumbList[breadcrumbList.length-1].href;
+    let activityId = "";
+    try {
+      activityId = String(currentURL).split("id=")[1].split("&")[0].trim();
+    } catch  (error) {
+      console.error("Invalid Document", currentURL);
+      return false;
+    }
+    let gradeStatus = doc.querySelector("td.submissiongraded")?.textContent;
+    let activityTitle = doc.querySelector("section h2")?.textContent;
+    let feedbackGrade = doc.querySelector("div.feedbacktable table td.lastcol")?.textContent;
+    let courseIdCode = doc.querySelector(".homelink a")?.textContent.split("-")?.[0];
+
+    return {
+      id: activityId,
+      status: gradeStatus ? gradeStatus : false,
+      title: activityTitle,
+      feedback: feedbackGrade ? feedbackGrade : false,
+      url: currentURL,
+      courseId: courseIdCode
+    }
+  }
+
+  // Get url value on activity input, fetch grades and save in localStorage.
+  async function saveNewActivity() {
+    let newActivityURL = document.querySelector("input#new-activity").value;
+
+    if (!isValidHttpUrl(newActivityURL)) {
+      // Handle invalid URL
+      return false;
+    }
+
+    // Adding new activity
+    let activityTitle = "Atividade";
+    let activityGrade = "10/10";
+    let gradeObj = await fetchGradeURL(newActivityURL);
+    if (gradeObj == null ) {
+      return false;
+    }
+    appendToLS(gradeObj);
+
+    appendActivityToResultHTML(gradeObj);
+  };
+
+  // Fetch every activity saved in localStorage and append to html results.
+  async function checkLSActivities() {
+    if (localStorage.getItem(LSactivitiesListKEY) != null) {
+      let currentList = JSON.parse(localStorage.getItem(LSactivitiesListKEY));
+
+      currentList.map(async (activity) => {
+        if (activity == null) {
+          return false;
+        }
+        let gradeObj = await fetchGradeURL(activity.url);
+        if (gradeObj == null ) {
+          return false;
+        }
+        appendActivityToResultHTML(gradeObj);
+      })
+    }
+  }
+</script>
+
+<div id="activity-grade-checker-container">
+  <div id="grade-checker-results"></div>
+  <ul id="activities-list">
+    <li id="new-activity-item">
+      <input type="text" name="new-activity" id="new-activity">
+      <button onclick="saveNewActivity()">Check</button>
+    </li>
+  </ul>
+</div>
+<script>
+  window.onload = checkLSActivities();
+</script>
