@@ -1,5 +1,137 @@
 <script>
   var LSactivitiesListKEY = "activitiesList";
+  var typesList = ["assign", "hotpot", "quiz"];
+
+  function getIdfromHref(hrefString) {
+    let id = String(hrefString).split("?id=");
+    id = id[id.length-1].split("&")[0];
+    return id.trim()
+  }
+
+  function getSemestersElements(doc) {
+    return doc.querySelectorAll(".block_ufsc_course_list .content .generalbox");
+  }
+
+  function getCoursesElements(semesterDocElement) {
+    return semesterDocElement.querySelectorAll("ul li");
+  }
+  
+  function fetchDoc(gradelinkElement) {
+    return fetch(url).then((response) => {
+      return response.text();
+    })
+    .then(async (html) => {
+      let parser = new DOMParser();
+      let parsedPage = await parser.parseFromString(html, 'text/html');
+      return parsedPage;
+    })
+    .catch(((error) => {
+      console.log(error);
+      return error;
+    }));
+  }
+
+  function getGradeData(gradesDoc) {
+    // TODO: return grade table as array of data.
+    let data = [];
+    let headerNames = gradesDoc.querySelectorAll(".generaltable thead th");
+    headerNames = [...headerNames].map(h => h.textContent.toLowerCase());
+
+    // Deal with different column names
+    let nameIndex = headerNames.indexOf("nome") < 0 ? headerNames.indexOf("tarefas") : headerNames.indexOf("nome");
+    let gradeIndex = headerNames.indexOf("avaliar") < 0 ? headerNames.indexOf("nota") : headerNames.indexOf("avaliar");
+    // let commentsIndex = headerNames.indexOf("PLACEHOLDER");
+
+    let body = gradesDoc.querySelectorAll(".generaltable tbody tr");
+    body = [...body];
+    let dataList = body.map((row) => {
+      if (row?.children?.length < headerNames.length) {
+        return false;
+      }
+      return {
+        url: row.children[nameIndex].querySelector("a")?.href,
+        name: row.children[nameIndex]?.textContent,
+        grade: row.children[gradeIndex]?.textContent,
+      }
+    });
+    return dataList;
+  }
+  getGradeData(document)
+
+  function getGradeRowElement(grade, type) {
+    // grade should be like { name, href, grade, comments? }
+    // return row element 
+    // row could be li or tr
+    let gradeListElement = document.createElement("tr");
+    
+    const grade = {
+      "assign": () => {
+        let name = doc;
+        let href = gradesDoc.href;
+        let grade = "PLACEHOLDER";
+        let comments = "PLACEHOLDER";
+
+        const nameTd = document.createElement("td");
+        const hrefTd = document.createElement("td");
+        const gradeTd = document.createElement("td");
+        const commentsTd = document.createElement("td");
+
+        nameTd.textContent = name;
+        hrefTd.textContent = href;
+        gradeTd.textContent = grade;
+        commentsTd.textContent = comments;
+
+        gradeListElement.appendChild(nameTd);
+        gradeListElement.appendChild(hrefTd);
+        gradeListElement.appendChild(gradeTd);
+        gradeListElement.appendChild(commentsTd);
+      },
+      "hotpot": () => {},
+      "quiz": () => {},
+    };
+    
+    gradeListElement.appendChild(nameTd);
+    gradeListElement.appendChild(hrefTd);
+    gradeListElement.appendChild(gradeTd);
+    gradeListElement.appendChild(commentsTd);
+    
+    return gradeListElement;
+  }
+
+  function appendGradeListToCourseDiv(courseLiElement, type) {
+    let id = getIdfromHref(courseLiElement.childNodes[0].href);
+    
+    // Creating wrapper if does not exists
+    // HTML scruture:
+    // - Wrapper:
+    //    + Title
+    //    + Table
+    //        + Div appended goes right here
+
+    if (courseLiElement.querySelector(`#${type}-grades-wraper-${id}`) == null) {
+      let newElement = document.createElement("div");
+      let table = document.createElement("table");
+      let title = document.createElement("span");
+      title.textContent = `Atividade '${type}'`;
+
+      table.setAttribute("id", `${type}-grades-table-${id}`);
+      newElement.setAttribute("id", `${type}-wraper-${id}`);
+      
+      newElement.appendChild(title);
+      newElement.appendChild(table);
+      courseLiElement.appendChild(newElement);
+    }
+
+    // fetch grade by id
+    const activityURL = `https://moodle.ufsc.br/mod/${type}/index.php?id=${id}`;
+    const courseDoc = fetchDoc(activityURL);
+    const courseData = getGradeData(courseDoc, type);
+    const gradeElement = getGradeRowElement(courseData, type);
+
+    const wrapperTable = courseLiElement.querySelector(`#${type}-grades-wraper-${id} table`);
+    
+    wrapperTable.appendChild(gradeElement);
+  }
 
   // Append passed object to localStorage activitiesList and save again.
   function appendToLS(activityObj) {
