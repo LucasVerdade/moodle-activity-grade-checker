@@ -4,7 +4,7 @@
 
   function getIdfromHref(hrefString) {
     let id = String(hrefString).split("?id=");
-    id = id[id.length-1].split("&")[0];
+    id = id[id.length - 1].split("&")[0];
     return id.trim()
   }
 
@@ -15,23 +15,26 @@
   function getCoursesElements(semesterDocElement) {
     return semesterDocElement.querySelectorAll("ul li");
   }
-  
-  function fetchDoc(gradelinkElement) {
+
+  function fetchDoc(url) {
     return fetch(url).then((response) => {
       return response.text();
     })
-    .then(async (html) => {
-      let parser = new DOMParser();
-      let parsedPage = await parser.parseFromString(html, 'text/html');
-      return parsedPage;
-    })
-    .catch(((error) => {
-      console.log(error);
-      return error;
-    }));
+      .then(async (html) => {
+        let parser = new DOMParser();
+        let parsedPage = await parser.parseFromString(html, 'text/html');
+        return parsedPage;
+      })
+      .catch(((error) => {
+        console.log(error);
+        return error;
+      }));
   }
 
   function getGradeData(gradesDoc) {
+    if (gradesDoc?.querySelector == null) {
+      return false;
+    }
     // TODO: return grade table as array of data.
     let data = [];
     let headerNames = gradesDoc.querySelectorAll(".generaltable thead th");
@@ -56,15 +59,14 @@
     });
     return dataList;
   }
-  getGradeData(document)
 
   function getGradeRowElement(grade, type) {
     // grade should be like { name, href, grade, comments? }
     // return row element 
     // row could be li or tr
     let gradeListElement = document.createElement("tr");
-    
-    const grade = {
+
+    const gradeHandler = {
       "assign": () => {
         let name = doc;
         let href = gradesDoc.href;
@@ -86,21 +88,21 @@
         gradeListElement.appendChild(gradeTd);
         gradeListElement.appendChild(commentsTd);
       },
-      "hotpot": () => {},
-      "quiz": () => {},
+      "hotpot": () => { },
+      "quiz": () => { },
     };
-    
+
     gradeListElement.appendChild(nameTd);
     gradeListElement.appendChild(hrefTd);
     gradeListElement.appendChild(gradeTd);
     gradeListElement.appendChild(commentsTd);
-    
+
     return gradeListElement;
   }
 
   function appendGradeListToCourseDiv(courseLiElement, type) {
     let id = getIdfromHref(courseLiElement.childNodes[0].href);
-    
+
     // Creating wrapper if does not exists
     // HTML scruture:
     // - Wrapper:
@@ -116,7 +118,7 @@
 
       table.setAttribute("id", `${type}-grades-table-${id}`);
       newElement.setAttribute("id", `${type}-wraper-${id}`);
-      
+
       newElement.appendChild(title);
       newElement.appendChild(table);
       courseLiElement.appendChild(newElement);
@@ -129,8 +131,73 @@
     const gradeElement = getGradeRowElement(courseData, type);
 
     const wrapperTable = courseLiElement.querySelector(`#${type}-grades-wraper-${id} table`);
-    
+
     wrapperTable.appendChild(gradeElement);
+  }
+
+  // Each course will have a child 
+  function appendEmptyChildToCourse(semestersElementList, onlyLastSemester) {
+    if (onlyLastSemester) {
+      let lastSemester = semestersElementList[0];
+      let coursesList = getCoursesElements(lastSemester);
+      coursesList.forEach(courseLi => {
+        // Create new element and append
+        const courseURL = courseLi.querySelector("a")?.href;
+        const courseId = getIdfromHref(courseURL);
+        if (courseLi?.querySelector(`#course-${courseId}-child-wrapper`) == null) {
+          let newElement = document.createElement("div");
+          newElement.setAttribute("id", `course-${courseId}-child-wrapper`);
+          newElement?.style?.setProperty("display", "block"); // change it to 'none'
+          courseLi.appendChild(newElement);
+
+        } else {
+          console.warn("Course wrapper child already exists", `The div 'course-${courseId}-child-wrapper' already exists`)
+        }
+      });
+
+    } else {
+      semestersElementList.forEach(semester => {
+        let coursesList = getCoursesElements(semester);
+        coursesList.forEach(courseLi => {
+          // Create new element and append
+          const courseURL = courseLi.querySelector("a")?.href;
+          const courseId = getIdfromHref(courseURL);
+          if (courseLi?.querySelector(`#course-${courseId}-child-wrapper`) == null) {
+            let newElement = document.createElement("div");
+            newElement.setAttribute("id", `course-${courseId}-child-wrapper`);
+            newElement?.style?.setProperty("display", "none");
+            courseLi.appendChild(newElement);
+
+          } else {
+            console.warn("Course wrapper child already exists!", `The div 'course-${courseId}-child-wrapper' already exists`)
+          }
+        });
+      });
+    }
+  }
+
+  function populateSemesterWithData(semesterElement) {
+    let coursesList = getCoursesElements(semesterElement);
+    coursesList.forEach(async (courseLi) => {
+      const courseURL = courseLi.querySelector("a")?.href;
+      const courseId = getIdfromHref(courseURL);
+      const currentWrapper = courseLi?.querySelector(`#course-${courseId}-child-wrapper`);
+      if (currentWrapper != null) {
+        // hardcoded: type[0]
+        const activityURL = `https://moodle.ufsc.br/mod/${typesList[0]}/index.php?id=${courseId}`;
+        const coursePageDoc = await fetchDoc(activityURL);
+        console.log("coursePageDoc", coursePageDoc)
+        let courseData = getGradeData(coursePageDoc);
+        
+        // new element (should be table)
+        const newElement = document.createElement("p");
+        newElement.textContent = JSON.stringify(courseData);
+        currentWrapper.appendChild(newElement);
+        
+      } else {
+        console.warn("Course wrapper child does not exists!", `The div 'course-${courseId}-child-wrapper' does not exists`)
+      }
+    });
   }
 
   // Append passed object to localStorage activitiesList and save again.
@@ -182,23 +249,23 @@
     let { id, title, feedback, url, courseId } = gradeObj;
 
     let newLi = document.createElement("li");
-    newLi.setAttribute("id",`activity-${id.trim()}`);
+    newLi.setAttribute("id", `activity-${id.trim()}`);
 
     let deleteIcon = document.createElement("img");
-    deleteIcon.src= "/theme/image.php/clean/core/1624895146/t/delete";
+    deleteIcon.src = "/theme/image.php/clean/core/1624895146/t/delete";
     let removeBtn = document.createElement("BUTTON");
     removeBtn.appendChild(deleteIcon);
     removeBtn.onclick = () => deleteActivity(id);
 
     let idSpan = document.createElement("span");
     let activityLink = document.createElement("a");
-    activityLink.href= url;
+    activityLink.href = url;
     activityLink.innerHTML = `[${courseId}] `;
     idSpan.appendChild(activityLink);
 
     let titleSpan = document.createElement("span");
     if (title.length >= 21) {
-      titleSpan.innerHTML = `${title.substr(0,20)}... `;
+      titleSpan.innerHTML = `${title.substr(0, 20)}... `;
       titleSpan.title = title;
     } else {
       titleSpan.innerHTML = `${title} `;
@@ -237,11 +304,11 @@
   // Get HTMLDocument and return activity data wrapped in an object
   function getGrade(doc) {
     let breadcrumbList = doc.querySelectorAll("ul.breadcrumb li span a");
-    let currentURL = breadcrumbList[breadcrumbList.length-1].href;
+    let currentURL = breadcrumbList[breadcrumbList.length - 1].href;
     let activityId = "";
     try {
       activityId = String(currentURL).split("id=")[1].split("&")[0].trim();
-    } catch  (error) {
+    } catch (error) {
       console.error("Invalid Document", currentURL);
       return false;
     }
@@ -273,7 +340,7 @@
     let activityTitle = "Atividade";
     let activityGrade = "10/10";
     let gradeObj = await fetchGradeURL(newActivityURL);
-    if (gradeObj == null ) {
+    if (gradeObj == null) {
       return false;
     }
     appendToLS(gradeObj);
@@ -291,13 +358,19 @@
           return false;
         }
         let gradeObj = await fetchGradeURL(activity.url);
-        if (gradeObj == null ) {
+        if (gradeObj == null) {
           return false;
         }
         appendActivityToResultHTML(gradeObj);
       })
     }
   }
+  // To test the new feature use this:
+  // var semesters = getSemestersElements(document);
+  //   console.log("Semesters", semesters != null)
+  //   appendEmptyChildToCourse(semesters, true);
+  //   console.log("appended empty");
+  //   populateSemesterWithData(semesters[0])
 </script>
 
 <div id="activity-grade-checker-container">
@@ -310,5 +383,6 @@
   </ul>
 </div>
 <script>
-  window.onload = checkLSActivities();
+  // TODO: fix 'function not defined' error. Possible solution: set document.someFunction
+  // window.onload = checkLSActivities();
 </script>
